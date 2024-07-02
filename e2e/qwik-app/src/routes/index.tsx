@@ -15,7 +15,7 @@ export default component$(() => {
   useOnDocument('DOMContentLoaded', $(async () => {
     if (document.unreframedBody) return;
     const reframedContainer = document.getElementById('flower')!;
-    await reframed("/demo/flower/", {container: reframedContainer});
+    await reframed("/demo/flower/blue", {container: reframedContainer});
   }));
 
 

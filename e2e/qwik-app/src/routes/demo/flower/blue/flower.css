@@ -51,9 +51,9 @@ h1 {
 .square.odd {
   --luminance: calc(1 - calc(calc(var(--index) * var(--odd-color-step)) / 256));
   background: rgb(
-    calc(172 * var(--luminance)),
-    calc(127 * var(--luminance)),
-    calc(244 * var(--luminance))
+    calc(0 * var(--luminance)),
+    calc(0 * var(--luminance)),
+    calc(255 * var(--luminance))
   );
 }
 
@@ -74,17 +74,4 @@ h1 {
 }
 .pride .square:nth-child(12n + 11) {
   background: #760089;
-}
-
-nav {
-  ul {
-    display: flex;
-    justify-content: space-around;
-    width: 100%;
-    list-style: none;
-  }
-
-  a {
-    font-size: 2rem;
-  }
 }
