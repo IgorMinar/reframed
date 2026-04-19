@@ -39,6 +39,8 @@ export function getWebMiddleware(
 		}
 
 		const requestSecFetchDest = request.headers.get('sec-fetch-dest');
+		// Service workers lose the Fetch-Metadata header when cloning navigate requests; fallback to Request.destination.
+		const requestDestination = (request as Request & { destination?: string }).destination;
 
 		/**
 		 * Handle IFrame request from reframed
@@ -50,7 +52,13 @@ export function getWebMiddleware(
 		 *
 		 * However, we don't want the iframe's document to actually contain the fragment's content; we're only using it as an isolated execution context. Returning a stub document here is our workaround to that problem.
 		 */
-		if (requestSecFetchDest === 'iframe') {
+		// TODO: SW-WORKAROUND - Service Workers strip sec-fetch-dest when cloning navigate requests with mode:'cors'.
+		// We first fall back to Request.destination (available in modern Chrome/Firefox/Safari); legacy SW wrapper still
+		// supplies x-wf-fetch-dest as a final safety net. Drop this once browsers retain Fetch-Metadata for SW clones.
+		const xwfFetchDest = request.headers.get('x-wf-fetch-dest');
+		const effectiveFetchDest = requestSecFetchDest || requestDestination || xwfFetchDest;
+
+		if (effectiveFetchDest === 'iframe') {
 			// The title below is used be reframed to detect gateway misconfiguration. See reframed.ts
 			return new Response('<!doctype html><title>Web Fragments: reframed</title>', {
 				// !!! Important: the header name must be Camel-Cased for overriding via the iframesHeaders to work !!!
@@ -68,7 +76,7 @@ export function getWebMiddleware(
 		// Forward the request to the fragment endpoint
 		const fragmentResponsePromise =
 			// but only if we are about to pierce, or are proxying the request to the fragment endpoint
-			matchedFragment.piercing || requestSecFetchDest !== 'document'
+			matchedFragment.piercing || effectiveFetchDest !== 'document'
 				? fetchFragment(request, matchedFragment, additionalHeaders, mode)
 				: undefined; //Promise.reject('Unexpected fragment request');
 
@@ -78,7 +86,7 @@ export function getWebMiddleware(
 		 *
 		 * For hard navigations we need to combine the appShell response with fragment response.
 		 */
-		if (requestSecFetchDest === 'document') {
+		if (effectiveFetchDest === 'document') {
 			// Fetch the app shell response from the origin and clone it so we can modify it
 			const originalNextResponse = await next();
 			const appShellResponse = new Response(originalNextResponse.body, originalNextResponse);
@@ -102,14 +110,14 @@ export function getWebMiddleware(
 				.then(stripDoctype)
 				.then(prefixHtmlHeadBody)
 				.then(neutralizeScriptAndLinkTags)
-				.then((fragmentResponse) =>
-					embedFragmentIntoShellApp({
+				.then((fragmentResponse) => {
+					return embedFragmentIntoShellApp({
 						appShellResponse,
 						fragmentResponse,
 						fragmentConfig: matchedFragment,
 						gateway: gateway,
-					}),
-				)
+					});
+				})
 				.then((combinedResponse) => {
 					// Append Vary header to prevent BFCache issues
 					combinedResponse.headers.append('vary', 'sec-fetch-dest');
@@ -117,7 +125,10 @@ export function getWebMiddleware(
 					combinedResponse.headers.append('x-web-fragment-id', matchedFragment.fragmentId);
 					return attachForwardedHeaders(Promise.resolve(combinedResponse), matchedFragment)(combinedResponse);
 				})
-				.catch(renderErrorResponse);
+				.catch((error) => {
+					console.error('[Web] ERROR in piercing flow:', error);
+					return renderErrorResponse(error);
+				});
 		}
 
 		const fragmentResponse = await fragmentResponsePromise!;
@@ -228,7 +239,9 @@ export function getWebMiddleware(
 				? [requestUrl, endpoint]
 				: [new URL(`${requestUrl.pathname}${requestUrl.search}`, endpoint), globalThis.fetch];
 
-		const fetchingToPierce = originalRequest.headers.get('sec-fetch-dest') === 'document';
+		const originalRequestDestination = (originalRequest as Request & { destination?: string }).destination;
+		const fetchingToPierce =
+			(originalRequest.headers.get('sec-fetch-dest') || originalRequestDestination) === 'document';
 
 		const fragmentReq = new Request(fragmentReqUrl, originalRequest);
 
@@ -272,7 +285,10 @@ export function getWebMiddleware(
 		// make the request and ensure we don't follow redirects
 		// redirects should be sent all the way to the client, which can then decide to follow them or not
 		// this ensures that window.location is updated in the reframed iframe if the fragment returns a redirect
-		return fragmentFetch(fragmentReq, { redirect: 'manual' });
+		// TODO: SW-WORKAROUND - In Service Workers, redirect:'manual' with mode:'cors' is not allowed
+		// Use 'follow' in SW context (detected via isServiceWorker option)
+		const redirectMode = options.isServiceWorker ? 'follow' : 'manual';
+		return fragmentFetch(fragmentReq, { redirect: redirectMode });
 
 		// TODO: add timeout handling
 		// return fetch(fragmentReq, { signal: abortController.signal }).finally(

@@ -18,8 +18,14 @@ export function reframedDomInsertion<T extends Node>(
 
 	// if the child is a script, then append and execute it in a reframed context
 	if (nodeToInsert instanceof HTMLScriptElement) {
+		console.debug('[reframed] script insertion detected', {
+			src: nodeToInsert.src || '<inline>',
+			textLength: nodeToInsert.textContent?.length ?? 0,
+			hasParent: Boolean(nodeToInsert.parentNode),
+		});
 		// if the child is an unattached inline script that doesn't yet have text any content, then we need treat it in a special way
 		if (!nodeToInsert.src && !nodeToInsert.firstChild && !nodeToInsert.parentNode) {
+			console.debug('[reframed] preparing unattached inline script for iframe execution');
 			prepareUnattachedInlineScript(nodeToInsert, iframeDocument!);
 			return doInsertTheNode();
 		}
@@ -28,6 +34,10 @@ export function reframedDomInsertion<T extends Node>(
 		const returnVal = doInsertTheNode();
 		restoreScriptType(nodeToInsert);
 		executeInertScript(nodeToInsert, iframeDocument);
+		console.debug('[reframed] script processed', {
+			src: nodeToInsert.src || '<inline>',
+			restoredType: nodeToInsert.getAttribute('type') ?? '<unset>',
+		});
 		return returnVal;
 	}
 
@@ -125,6 +135,7 @@ export function executeInertScript(inertScript: HTMLScriptElement, iframeDocumen
 	// If the inert script has already been evaluated but later re-added to the DOM via any DOM insertion method
 	// (i.e insertBefore() and appendChild()), do not evaluate the script again
 	if (alreadyExecutedScriptsAndLinks.has(inertScript)) {
+		console.debug('[reframed] skipping already executed script', inertScript.src || '<inline>');
 		return false;
 	}
 
@@ -132,12 +143,17 @@ export function executeInertScript(inertScript: HTMLScriptElement, iframeDocumen
 	// We can add the data block directly to the main document instead of the iframe context.
 	const validScriptTypes = ['module', 'text/javascript', 'importmap', 'speculationrules', '', null];
 	if (!validScriptTypes.includes(inertScript.getAttribute('type'))) {
+		console.debug('[reframed] ignoring script with unsupported type', {
+			src: inertScript.src || '<inline>',
+			type: inertScript.getAttribute('type'),
+		});
 		return false;
 	}
 
 	assert(!!(inertScript.src || inertScript.textContent), `Can't execute script without src or textContent!`);
 
 	attachScriptsToIframe({ inertScript, iframeDocument });
+	console.debug('[reframed] executing inert script in iframe', inertScript.src || '<inline>');
 
 	return true;
 }
@@ -210,6 +226,11 @@ export function attachScriptsToIframe({
 
 	getInternalReference(iframeDocument, 'body').appendChild(execScript);
 	alreadyExecutedScriptsAndLinks.add(inertScript);
+	console.debug('[reframed] script attached to iframe body', {
+		inertSrc: inertScript.src || '<inline>',
+		execSrc: execScript.src || '<inline>',
+		hasText: Boolean(execScript.textContent?.length),
+	});
 }
 
 /**
@@ -225,6 +246,10 @@ function setInertScriptType(script: HTMLScriptElement) {
 		script.setAttribute('data-script-type', scriptType);
 	}
 	script.setAttribute('type', 'inert');
+	console.debug('[reframed] script marked inert', {
+		src: script.src || '<inline>',
+		originalType: scriptType || '<unset>',
+	});
 }
 
 /**
@@ -239,6 +264,10 @@ function restoreScriptType(script: HTMLScriptElement) {
 	if (scriptType) {
 		script.setAttribute('type', scriptType);
 	}
+	console.debug('[reframed] script type restored', {
+		src: script.src || '<inline>',
+		restoredType: scriptType || '<unset>',
+	});
 }
 
 /**

@@ -1,7 +1,9 @@
+// @ts-nocheck
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FragmentGateway } from '../../src/gateway/fragment-gateway';
 import { getNodeMiddleware } from '../../src/gateway/middleware/node';
 import { getWebMiddleware } from '../../src/gateway/middleware/web';
+import { getServiceWorkerMiddleware } from '../../src/gateway/middleware/service-worker';
 import connect from 'connect';
 import express from 'express';
 import http from 'node:http';
@@ -13,6 +15,7 @@ const environments = [];
 environments.push('web');
 environments.push('connect');
 environments.push('express');
+environments.push('service-worker');
 
 for (const environment of environments) {
 	describe(`${environment} middleware`, () => {
@@ -980,6 +983,36 @@ for (const environment of environments) {
 					// We simply pass around Requests and Responses.
 					testRequest = function webTestRequest(request: Request): Promise<Response> {
 						return webMiddleware(request, function nextFn() {
+							const appShellResponse = mockShellAppResponse.getResponse();
+							if (!appShellResponse) {
+								throw new Error('No app shell response provided, use mockShellAppResponse to set it');
+							}
+							return Promise.resolve(appShellResponse);
+						});
+					};
+
+					break;
+				}
+				case 'service-worker': {
+					const serviceWorkerMiddleware = getServiceWorkerMiddleware(fragmentGateway, {
+						additionalHeaders: {
+							'accept-language': 'sk-SK',
+							'x-color-mode': 'dark',
+						},
+					});
+
+					testRequest = function serviceWorkerTestRequest(request: Request): Promise<Response> {
+						let swRequest = request;
+
+						if (request.headers.get('sec-fetch-dest') === 'document') {
+							swRequest = request.clone();
+							Object.defineProperties(swRequest, {
+								mode: { value: 'navigate', configurable: true },
+								redirect: { value: 'manual', configurable: true },
+							});
+						}
+
+						return serviceWorkerMiddleware(swRequest, function nextFn() {
 							const appShellResponse = mockShellAppResponse.getResponse();
 							if (!appShellResponse) {
 								throw new Error('No app shell response provided, use mockShellAppResponse to set it');

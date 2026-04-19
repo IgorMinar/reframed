@@ -231,4 +231,6 @@ export interface FragmentGatewayConfig {
 export interface FragmentMiddlewareOptions {
 	additionalHeaders?: HeadersInit;
 	mode?: 'production' | 'development';
+	// added a flag to indicate service worker context
+	isServiceWorker?: boolean;
 }

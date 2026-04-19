@@ -5,6 +5,9 @@ packages:
   - e2e/*/fragments/*
   - e2e/node-servers/**/*
 
+onlyBuiltDependencies:
+  - writable-dom
+
 catalog:
   typescript: 5.5.4
   vite: 6.0.7
