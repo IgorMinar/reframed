@@ -349,6 +349,57 @@ test('unbound fragment should not participate in history management', async () =
 	});
 });
 
+test('patched history property on bound fragment window should be configurable and re-patchable', async () => {
+	const isConfigurable = await boundContext.evaluate(() =>
+		Object.getOwnPropertyDescriptor(window, 'history')?.configurable === true,
+	);
+	expect(isConfigurable).toBe(true);
+
+	const canRedefine = await boundContext.evaluate(() => {
+		try {
+			const proxy = window.history;
+			Object.defineProperty(window, 'history', { get() { return proxy; }, configurable: true });
+			return true;
+		} catch {
+			return false;
+		}
+	});
+	expect(canRedefine).toBe(true);
+});
+
+test('patched history methods on unbound fragment should be writable, configurable, and re-patchable', async () => {
+	const descriptors = await unboundContext.evaluate(() => ({
+		pushStateWritable: Object.getOwnPropertyDescriptor(history, 'pushState')?.writable === true,
+		pushStateConfigurable: Object.getOwnPropertyDescriptor(history, 'pushState')?.configurable === true,
+		backWritable: Object.getOwnPropertyDescriptor(history, 'back')?.writable === true,
+		backConfigurable: Object.getOwnPropertyDescriptor(history, 'back')?.configurable === true,
+		forwardWritable: Object.getOwnPropertyDescriptor(history, 'forward')?.writable === true,
+		forwardConfigurable: Object.getOwnPropertyDescriptor(history, 'forward')?.configurable === true,
+		lengthConfigurable: Object.getOwnPropertyDescriptor(history, 'length')?.configurable === true,
+	}));
+
+	expect(descriptors.pushStateWritable).toBe(true);
+	expect(descriptors.pushStateConfigurable).toBe(true);
+	expect(descriptors.backWritable).toBe(true);
+	expect(descriptors.backConfigurable).toBe(true);
+	expect(descriptors.forwardWritable).toBe(true);
+	expect(descriptors.forwardConfigurable).toBe(true);
+	expect(descriptors.lengthConfigurable).toBe(true);
+
+	const canMonkeyPatch = await unboundContext.evaluate(() => {
+		try {
+			const original = history.pushState.bind(history);
+			history.pushState = function (...args) {
+				return original(...args);
+			};
+			return true;
+		} catch {
+			return false;
+		}
+	});
+	expect(canMonkeyPatch).toBe(true);
+});
+
 test('hard nav and reload behavior in a bound fragment', async ({ page }) => {
 	// cause some navigations so that we update state and can verify that we actually reloaded
 	await bound.softNavToFooButton.click();

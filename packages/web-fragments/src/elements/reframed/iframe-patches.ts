@@ -160,6 +160,7 @@ export function initializeIFrameContext(
 				get() {
 					return historyProxy;
 				},
+				configurable: true,
 			},
 		});
 	} else {
@@ -180,6 +181,8 @@ export function initializeIFrameContext(
 					standaloneHistoryCursor++;
 					iframeWindow.history.replaceState(state, title, url);
 				},
+				writable: true,
+				configurable: true,
 			},
 
 			back: {
@@ -191,6 +194,8 @@ export function initializeIFrameContext(
 					let { state, title, url } = standaloneHistoryStack[standaloneHistoryCursor];
 					iframeWindow.history.replaceState(state, title, url);
 				},
+				writable: true,
+				configurable: true,
 			},
 
 			forward: {
@@ -202,12 +207,15 @@ export function initializeIFrameContext(
 					let { state, title, url } = standaloneHistoryStack[standaloneHistoryCursor];
 					iframeWindow.history.replaceState(state, title, url);
 				},
+				writable: true,
+				configurable: true,
 			},
 
 			length: {
 				get() {
 					return standaloneHistoryStack.length;
 				},
+				configurable: true,
 			},
 		});
 	}
