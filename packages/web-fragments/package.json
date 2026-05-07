@@ -35,7 +35,9 @@
 	},
 	"version": "0.8.2",
 	"files": [
-		"dist"
+		"dist",
+		".claude",
+		"scripts/install-skills.js"
 	],
 	"scripts": {
 		"dev": "pnpm dev:playground",
@@ -55,7 +57,8 @@
 		"test:playground:nonpierced": "PIERCING=false pnpm -C test/playground test",
 		"test-debug:gateway": "pnpm -C test/gateway test-debug",
 		"changeset": "pnpm -C ../../ exec changeset",
-		"prepare": "pnpm build"
+		"prepare": "pnpm build",
+		"postinstall": "node scripts/install-skills.js"
 	},
 	"dependencies": {
 		"htmlrewriter": "npm:wf-htmlrewriter@0.0.13"

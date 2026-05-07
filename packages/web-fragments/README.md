@@ -48,6 +48,22 @@ The best way to learn more is going to [our official documentation](https://web-
 
 You can also check out the [demos present in this repository](./e2e/) where you can find examples [e2e/pierced-react/README.md](./e2e/pierced-react/README.md) for platforms supporting [Web Fetch API](https://developer.mozilla.org/docs/Web/API/Fetch_API) like Cloudflare or Netlify, or [e2e/node-servers/README.md](./e2e/node-servers/README.md) for platforms supporting Node.js runtimes.
 
+## Claude Code skills
+
+If you use [Claude Code](https://claude.ai/code), installing this package automatically links a set of slash commands into your project's `.claude/commands/web-fragments/` directory via a postinstall script.
+
+| Command                               | What it does                                                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/web-fragments:init-fragment`        | Scaffolds gateway registration, app shell placeholder, and fragment HTML for a new fragment                     |
+| `/web-fragments:gateway-config`       | Reviews or generates your `FragmentGateway` configuration and flags deprecated fields or missing error handlers |
+| `/web-fragments:debug-fragment`       | Systematic diagnostic for invisible fragments, broken piercing, FOUC, and CSP/iframe blocks                     |
+| `/web-fragments:fragment-test`        | Generates a Playwright test scenario (`index.html` + `fragment.html` + `spec.ts`)                               |
+| `/web-fragments:migrate-to-fragments` | Analyzes an existing app and produces a phased extraction plan                                                  |
+| `/web-fragments:fragment-csp`         | Generates and audits Content Security Policy headers for the iframe-based isolation model                       |
+| `/web-fragments:fragment-perf`        | Audits your setup for piercing, streaming, caching, and route pattern issues                                    |
+
+The commands are discovered automatically — no manual setup required beyond having Claude Code installed.
+
 ## More resources
 
 We blogged about the philosophy of our approach and published some early research on the Cloudflare blog. You can check out a post introducing the previous generation of Web Fragments: https://blog.cloudflare.com/better-micro-frontends.
