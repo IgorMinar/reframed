@@ -466,23 +466,57 @@ export function initializeIFrameContext(
 		});
 	}
 
+	// Host-realm fragment elements (tags without a dash) resolve addEventListener to the host realm's
+	// EventTarget.prototype, but the fragment's zone.js (loaded in the iframe realm) only patches the
+	// iframe realm's prototype. So listeners registered by the fragment run outside its zone — a zone
+	// can't span two realms. With Angular this means template (click) handlers run outside NgZone, so
+	// change detection never fires and the view stays stale until something forces detectChanges().
+	//
+	// Route such elements' add/removeEventListener back through the iframe realm's prototype, read
+	// lazily so we pick up zone.js's patched version (it patches after this iframe is initialized).
+	// Without zone.js this is a transparent passthrough. See web-fragments issue #272.
+	const patchElementEventListeners = (element: Element) => {
+		Object.defineProperties(element, {
+			addEventListener: {
+				configurable: true,
+				writable: true,
+				value: function reframedElementAddEventListener(...args: Parameters<EventTarget['addEventListener']>) {
+					return iframeWindow.EventTarget.prototype.addEventListener.apply(this, args);
+				},
+			},
+			removeEventListener: {
+				configurable: true,
+				writable: true,
+				value: function reframedElementRemoveEventListener(...args: Parameters<EventTarget['removeEventListener']>) {
+					return iframeWindow.EventTarget.prototype.removeEventListener.apply(this, args);
+				},
+			},
+		});
+	};
+
 	Object.defineProperties(iframeDocument, {
 		createElement: {
 			value: function createElement(...[tagName]: Parameters<Document['createElement']>) {
-				return Document.prototype.createElement.apply(
-					// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
-					tagName.includes('-') ? iframeDocument : mainDocument,
+				// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
+				const isIframeRealmElement = tagName.includes('-');
+				const element = Document.prototype.createElement.apply(
+					isIframeRealmElement ? iframeDocument : mainDocument,
 					arguments as any,
 				);
+				if (!isIframeRealmElement) patchElementEventListeners(element);
+				return element;
 			},
 		},
 		createElementNS: {
 			value: function createElementNS(...[namespaceURI, tagName]: Parameters<Document['createElementNS']>) {
-				return Document.prototype.createElementNS.apply(
-					// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
-					namespaceURI === 'http://www.w3.org/1999/xhtml' && tagName.includes('-') ? iframeDocument : mainDocument,
+				// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
+				const isIframeRealmElement = namespaceURI === 'http://www.w3.org/1999/xhtml' && tagName.includes('-');
+				const element = Document.prototype.createElementNS.apply(
+					isIframeRealmElement ? iframeDocument : mainDocument,
 					arguments as any,
 				);
+				if (!isIframeRealmElement) patchElementEventListeners(element);
+				return element;
 			},
 		},
 	});
