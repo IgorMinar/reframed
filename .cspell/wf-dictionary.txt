@@ -43,3 +43,10 @@ rnguyen
 subrequest
 subresource
 unregister
+deleters
+expando
+expandos
+retargeted
+stringifiers
+Unforgeable
+webref

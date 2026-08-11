@@ -3,6 +3,7 @@
 	"ignorePaths": [
 		"pnpm-lock.yaml",
 		"**/*.svg",
+		"**/*.generated.ts",
 		// cspell doesn't support negative glob so we have to list all docs dirs explicitly
 		"/docs/astro.config.ts",
 		"/docs/package.json",
