@@ -1,7 +1,8 @@
 import { ReframedShadowRoot, reframedMetadataSymbol } from './reframed';
 import { execToInertScriptMap } from './script-execution';
 import { assert } from './utils/assert';
-import { rewriteQuerySelector } from './utils/selector-helpers';
+import { installDocumentFacade } from './document-facade/document-facade';
+import { createDocumentOverrides } from './document-facade/document-overrides';
 
 /**
  * Apply monkey-patches to the source iframe so that we trick code running in it to behave as if it
@@ -243,6 +244,12 @@ export function initializeIFrameContext(
 
 	/**
 	 * START> DOCUMENT PATCHES
+	 *
+	 * The Document API surface is virtualized via a proxy facade spliced into the document's prototype chain.
+	 * The virtualized member implementations live in document-facade/document-overrides.ts, and every Document
+	 * member's audit status is recorded in document-facade/document-member-classification.ts.
+	 *
+	 * Note: native references (body, currentScript) must be captured before the facade is installed.
 	 */
 	setInternalReference(iframeDocument, 'body');
 
@@ -251,241 +258,19 @@ export function initializeIFrameContext(
 		'currentScript',
 	)!.get!.bind(iframeDocument);
 
-	Object.defineProperties(iframeDocument, {
-		title: {
-			get: function () {
-				return (
-					// https://html.spec.whatwg.org/multipage/dom.html#document.title
-					wfDocumentElement.querySelector('title')?.textContent?.trim() ?? '[reframed document]'
-				);
-			},
-			set: function (newTitle: string) {
-				const titleElement = wfDocumentElement.querySelector('title');
-				if (titleElement) {
-					titleElement.textContent = newTitle;
-				}
-				if (boundNavigation) {
-					mainDocument.title = newTitle;
-				}
-			},
-		},
-
-		readyState: {
-			get() {
-				return reframedShadowRoot[reframedMetadataSymbol].iframeDocumentReadyState;
-			},
-		},
-
-		currentScript: {
-			get() {
-				// grab the currently executing script in the iframe, and map it to its clone in the main document
-				return execToInertScriptMap.get(getUnpatchedIframeDocumentCurrentScript());
-			},
-		},
-
-		// redirect getElementById to be a scoped reframedContainer.querySelector query
-		getElementById: {
-			value(id: string) {
-				return wfDocumentElement.querySelector(`[id="${id}"]`);
-			},
-		},
-
-		getElementsByClassName: {
-			value(names: string) {
-				return wfDocumentElement.getElementsByClassName(names);
-			},
-		},
-
-		getElementsByName: {
-			value(name: string) {
-				return wfDocumentElement.querySelector(`[name="${name}"]`);
-			},
-		},
-
-		getElementsByTagNameNS: {
-			value(namespaceURI: string | null, name: string) {
-				return wfDocumentElement.getElementsByTagNameNS(namespaceURI, name);
-			},
-		},
-
-		// redirect to mainDocument
-		activeElement: {
-			get: () => {
-				return (
-					reframedShadowRoot.activeElement ??
-					(mainDocument.activeElement === mainDocument.body ? iframeDocument.body : null)
-				);
-			},
-		},
-
-		styleSheets: {
-			get: () => {
-				return reframedShadowRoot.styleSheets;
-			},
-		},
-
-		adoptedStyleSheets: {
-			get() {
-				return reframedShadowRoot.adoptedStyleSheets;
-			},
-			set(value: CSSStyleSheet[]) {
-				reframedShadowRoot.adoptedStyleSheets = value;
-			},
-		},
-
-		dispatchEvent: {
-			value(event: Event) {
-				return wfDocumentElement.dispatchEvent(event);
-			},
-		},
-
-		childElementCount: {
-			get() {
-				return wfDocumentElement.childElementCount;
-			},
-		},
-
-		hasChildNodes: {
-			value(id: string) {
-				return wfDocumentElement.hasChildNodes();
-			},
-		},
-
-		children: {
-			get() {
-				return wfDocumentElement.children;
-			},
-		},
-
-		firstElementChild: {
-			get() {
-				return wfDocumentElement.firstElementChild;
-			},
-		},
-
-		firstChild: {
-			get() {
-				return wfDocumentElement.firstChild;
-			},
-		},
-
-		lastElementChild: {
-			get() {
-				return wfDocumentElement.lastElementChild;
-			},
-		},
-
-		lastChild: {
-			get() {
-				return wfDocumentElement.lastChild;
-			},
-		},
-
-		/**
-		 * The following properties are references to special elements in a Document (html, head, body).
-		 * The browser does not allow multiple instances of these elements within a Document,
-		 * so we cannot render true <html>, <head>, <body> elements within the shadow root of a fragment.
-		 *
-		 * Instead, render custom elements (wf-html, wf-head, wf-body) that act like the html, head, and body.
-		 * The tagName and nodeName properties of these custom elements are then
-		 * patched to return "HTML", "HEAD", and "BODY", respectively.
-		 *
-		 * iframeDocument query methods must also be patched for custom wf-html, wf-head, and wf-body elements.
-		 * CSS Selector queries that contain html,head,body tag selectors are rewritten to the custom elements
-		 */
-		querySelector: {
-			value(selector: string) {
-				return wfDocumentElement.querySelector(rewriteQuerySelector(selector));
-			},
-		},
-		querySelectorAll: {
-			value(selector: string) {
-				return wfDocumentElement.querySelectorAll(rewriteQuerySelector(selector));
-			},
-		},
-		getElementsByTagName: {
-			value(tagName: string) {
-				// The shadowRoot node itself does not have a getElementsByTagName method.
-				// For html, head, and body, rely on the patched querySelectorAll method on iframeDocument.
-				// This will return a NodeList instead of an HTMLCollection, which will suffice for most use cases.
-				return wfDocumentElement.querySelectorAll(rewriteQuerySelector(tagName));
-			},
-		},
-		documentElement: {
-			get() {
-				return wfDocumentElement.querySelector('wf-html') ?? wfDocumentElement.firstElementChild;
-			},
-		},
-		head: {
-			get() {
-				return wfDocumentElement.querySelector('wf-head') ?? wfDocumentElement.firstElementChild;
-			},
-		},
-		body: {
-			get() {
-				return wfDocumentElement.querySelector('wf-body') ?? wfDocumentElement.firstElementChild;
-			},
-		},
-	} satisfies Partial<Record<keyof Document, any>>);
-
-	// document.createElement & friends patches
-	const domCreateProperties: (keyof Pick<
-		Document,
-		| 'createAttributeNS'
-		| 'createCDATASection'
-		| 'createComment'
-		| 'createDocumentFragment'
-		| 'createEvent'
-		| 'createExpression'
-		| 'createNSResolver'
-		| 'createNodeIterator'
-		| 'createProcessingInstruction'
-		| 'createRange'
-		| 'createTextNode'
-		| 'createTreeWalker'
-	>)[] = [
-		'createAttributeNS',
-		'createCDATASection',
-		'createComment',
-		'createDocumentFragment',
-		'createEvent',
-		'createExpression',
-		'createNSResolver',
-		'createNodeIterator',
-		'createProcessingInstruction',
-		'createRange',
-		'createTextNode',
-		'createTreeWalker',
-	];
-	for (const createProperty of domCreateProperties) {
-		Object.defineProperty(iframeDocument, createProperty, {
-			value: function reframedCreateFn() {
-				// @ts-expect-error WTD?!?
-				return mainDocument[createProperty].apply(mainDocument, arguments);
-			},
-		});
-	}
-
-	Object.defineProperties(iframeDocument, {
-		createElement: {
-			value: function createElement(...[tagName]: Parameters<Document['createElement']>) {
-				return Document.prototype.createElement.apply(
-					// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
-					tagName.includes('-') ? iframeDocument : mainDocument,
-					arguments as any,
-				);
-			},
-		},
-		createElementNS: {
-			value: function createElementNS(...[namespaceURI, tagName]: Parameters<Document['createElementNS']>) {
-				return Document.prototype.createElementNS.apply(
-					// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
-					namespaceURI === 'http://www.w3.org/1999/xhtml' && tagName.includes('-') ? iframeDocument : mainDocument,
-					arguments as any,
-				);
-			},
-		},
-	});
+	installDocumentFacade(
+		iframeDocument,
+		createDocumentOverrides({
+			iframeDocument,
+			mainDocument,
+			wfDocumentElement,
+			reframedShadowRoot,
+			boundNavigation,
+			getIframeDocumentReadyState: () => reframedShadowRoot[reframedMetadataSymbol].iframeDocumentReadyState,
+			// grab the currently executing script in the iframe, and map it to its clone in the main document
+			getCurrentScript: () => execToInertScriptMap.get(getUnpatchedIframeDocumentCurrentScript()),
+		}),
+	);
 	// END> DOCUMENT PATCHES
 
 	/** ---------------------------------------------- Event System Patches ------------------------------------------------ */
