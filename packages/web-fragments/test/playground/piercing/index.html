@@ -15,7 +15,7 @@
 
 		<script type="module">
 			import { initializeWebFragments, WebFragment } from 'web-fragments';
-			initializeWebFragments();
+			initializeWebFragments({ hostIsolation: import.meta.env.VITE_WF_HOST_ISOLATION || undefined });
 
 			window.fragmentContext = () => document.querySelector('iframe').contentWindow;
 

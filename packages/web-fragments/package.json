@@ -50,11 +50,16 @@
 		"test": "pnpm test:unit && pnpm test:gateway && pnpm test:playground",
 		"test:unit": "pnpm vitest run src",
 		"test:gateway": "pnpm -C test/gateway test",
-		"test:playground": "pnpm test:playground:pierced && pnpm test:playground:nonpierced",
+		"test:playground": "pnpm test:playground:legacy && pnpm test:playground:strict",
+		"test:playground:legacy": "pnpm test:playground:pierced && pnpm test:playground:nonpierced",
+		"test:playground:strict": "pnpm test:playground:pierced:strict && pnpm test:playground:nonpierced:strict",
 		"test:playground:pierced": "PIERCING=true pnpm -C test/playground test",
 		"test:playground:nonpierced": "PIERCING=false pnpm -C test/playground test",
+		"test:playground:pierced:strict": "PIERCING=true HOST_ISOLATION=strict pnpm -C test/playground test",
+		"test:playground:nonpierced:strict": "PIERCING=false HOST_ISOLATION=strict pnpm -C test/playground test",
 		"test-debug:gateway": "pnpm -C test/gateway test-debug",
 		"changeset": "pnpm -C ../../ exec changeset",
+		"generate:document-surface": "node scripts/generate-document-surface.mjs",
 		"prepare": "pnpm build"
 	},
 	"dependencies": {
@@ -62,6 +67,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^20.12.7",
+		"@webref/idl": "^3.82.1",
 		"path-to-regexp": "^6.2.2",
 		"ts-node-dev": "^2.0.0",
 		"writable-dom": "github:web-fragments/writable-dom#build-improvements",

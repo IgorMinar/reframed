@@ -6,13 +6,14 @@ export function reframedDomInsertion<T extends Node>(
 	doInsertTheNode: Function,
 	iframeDocument?: Document,
 ): T {
-	// if we are operating outside of a reframed DOM or the appended child is not an element, then just append
-	if (!iframeDocument || !(nodeToInsert instanceof HTMLElement)) {
+	// if we are operating outside of a reframed DOM or the appended child is neither an element nor
+	// a document fragment (which can carry scripts, e.g. cloned template contents), then just append
+	if (!iframeDocument || !(nodeToInsert instanceof HTMLElement || nodeToInsert instanceof DocumentFragment)) {
 		return doInsertTheNode();
 	}
 
 	// if the child's prototype is directly HTMLElement, then check if this is a HTML/BODY/HEAD element and rewrite it
-	if (Object.getPrototypeOf(nodeToInsert) === HTMLElement.prototype) {
+	if (nodeToInsert instanceof HTMLElement && Object.getPrototypeOf(nodeToInsert) === HTMLElement.prototype) {
 		patchSpecialHtmlElement(nodeToInsert, iframeDocument);
 	}
 
@@ -57,6 +58,64 @@ export function reframedDomInsertion<T extends Node>(
 	nestedScriptsAndLinks.forEach((element) => restoreElement(element));
 	nestedScriptsAndLinks.forEach((element) => executeElement(element, iframeDocument));
 	return returnVal;
+}
+
+/**
+ * Handles a multi-node insertion (append, prepend, replaceChildren, replaceWith) into a reframed DOM.
+ *
+ * All scripts and preload links across all node arguments are neutralized first, then the actual
+ * insertion runs exactly once, and only then are the scripts restored and executed in the reframed
+ * context, in argument order. (Neutralizing/restoring per-node around a shared deferred insertion
+ * would restore earlier scripts to their live form before the insertion actually happens, causing
+ * them to execute in the main JS context.)
+ */
+export function reframedMultiNodeDomInsertion(
+	nodes: (Node | string)[],
+	doInsertTheNodes: () => void,
+	iframeDocument?: Document,
+) {
+	if (!iframeDocument) {
+		return doInsertTheNodes();
+	}
+
+	const scriptsAndLinks: (HTMLScriptElement | HTMLLinkElement)[] = [];
+
+	for (const node of nodes) {
+		if (typeof node === 'string') {
+			console.warn(
+				'reframed: string arguments to append/prepend/replaceChildren/replaceWith are not supported and could result in incorrect script execution. Inserted string: ',
+				node,
+			);
+			continue;
+		}
+
+		if (node instanceof HTMLElement && Object.getPrototypeOf(node) === HTMLElement.prototype) {
+			patchSpecialHtmlElement(node, iframeDocument);
+		}
+
+		if (node instanceof HTMLScriptElement) {
+			if (!node.src && !node.firstChild && !node.parentNode) {
+				prepareUnattachedInlineScript(node, iframeDocument);
+			} else {
+				scriptsAndLinks.push(node);
+			}
+		} else if (
+			node instanceof HTMLLinkElement &&
+			(node.rel === 'preload' || node.rel === 'prefetch' || node.rel === 'modulepreload')
+		) {
+			scriptsAndLinks.push(node);
+		} else if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+			const nested: NodeListOf<HTMLScriptElement | HTMLLinkElement> | undefined = (
+				node as Element | DocumentFragment
+			).querySelectorAll?.('script,link[rel=preload],link[rel=prefetch],link[rel=modulepreload]');
+			nested?.forEach((element) => scriptsAndLinks.push(element));
+		}
+	}
+
+	scriptsAndLinks.forEach((element) => makeElementInert(element));
+	doInsertTheNodes();
+	scriptsAndLinks.forEach((element) => restoreElement(element));
+	scriptsAndLinks.forEach((element) => executeElement(element, iframeDocument));
 }
 
 function makeElementInert(element: HTMLScriptElement | HTMLLinkElement) {
@@ -232,7 +291,7 @@ function setInertScriptType(script: HTMLScriptElement) {
  *
  * @param script
  */
-function restoreScriptType(script: HTMLScriptElement) {
+export function restoreScriptType(script: HTMLScriptElement) {
 	const scriptType = script.getAttribute('data-script-type');
 	script.removeAttribute('data-script-type');
 	script.removeAttribute('type');

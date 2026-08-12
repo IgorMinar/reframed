@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>runtime-script-insertion fragment</title>
+	</head>
+	<body>
+		<h2>runtime-script-insertion fragment</h2>
+
+		<div class="assertion-container">
+			<p>inline script created via createElement executes synchronously on appendChild</p>
+			<input id="sync-inline-checkbox" type="checkbox" />
+		</div>
+		<div class="assertion-container">
+			<p>script with src loads and executes in the fragment context</p>
+			<input id="src-script-checkbox" type="checkbox" />
+		</div>
+		<div class="assertion-container">
+			<p>script parsed via innerHTML does not execute</p>
+			<input id="innerhtml-checkbox" type="checkbox" />
+		</div>
+		<div class="assertion-container">
+			<p>script cloned out of a runtime-built template executes on insertion</p>
+			<input id="template-clone-checkbox" type="checkbox" />
+		</div>
+		<div class="assertion-container">
+			<p>script nested in an unattached subtree executes only when the subtree is inserted</p>
+			<input id="nested-subtree-checkbox" type="checkbox" />
+		</div>
+		<div class="assertion-container">
+			<p>multiple scripts inserted via append() execute in order</p>
+			<input id="multi-append-checkbox" type="checkbox" />
+		</div>
+
+		<script>
+			const setResult = (selector, ok) => {
+				document.querySelector(selector).checked = !!ok;
+			};
+
+			// 1. inline script created via the fragment document executes synchronously on appendChild
+			const syncScript = document.createElement('script');
+			syncScript.textContent = 'window.__syncMarker = 42;';
+			document.head.appendChild(syncScript);
+			setResult('#sync-inline-checkbox', window.__syncMarker === 42);
+
+			// 2. script with src loads asynchronously and executes in the fragment's JS context
+			const srcScript = document.createElement('script');
+			srcScript.src = '/runtime-script-insertion/external.js';
+			srcScript.onload = () => {
+				setResult('#src-script-checkbox', window.__externalMarker === 'loaded');
+			};
+			document.head.appendChild(srcScript);
+
+			// 3. scripts parsed via innerHTML must not execute (per spec)
+			const container = document.createElement('div');
+			document.body.appendChild(container);
+			container.innerHTML = '<scr' + 'ipt>window.__innerHTMLMarker = true;</scr' + 'ipt>';
+			setResult('#innerhtml-checkbox', window.__innerHTMLMarker === undefined);
+
+			// 4. scripts appended into template content programmatically execute when a clone of the
+			// content is inserted; scripts parsed via template.innerHTML never execute, even when
+			// cloned (they carry the parser's "already started" flag — same as in a plain page)
+			const template = document.createElement('template');
+			const templateScript = document.createElement('script');
+			templateScript.textContent = 'window.__templateMarker = 1;';
+			template.content.appendChild(templateScript);
+			document.body.appendChild(template.content.cloneNode(true));
+
+			const parsedTemplate = document.createElement('template');
+			parsedTemplate.innerHTML = '<scr' + 'ipt>window.__parsedTemplateMarker = true;</scr' + 'ipt>';
+			document.body.appendChild(parsedTemplate.content.cloneNode(true));
+
+			setResult(
+				'#template-clone-checkbox',
+				window.__templateMarker === 1 && window.__parsedTemplateMarker === undefined,
+			);
+
+			// 5. a script nested in an unattached subtree executes only once the subtree is inserted
+			const wrapper = document.createElement('div');
+			const nestedScript = document.createElement('script');
+			nestedScript.textContent = 'window.__nestedMarker = true;';
+			wrapper.appendChild(nestedScript);
+			const nestedDidNotRunEarly = window.__nestedMarker === undefined;
+			document.body.appendChild(wrapper);
+			setResult('#nested-subtree-checkbox', nestedDidNotRunEarly && window.__nestedMarker === true);
+
+			// 6. multiple scripts inserted via append() execute in argument order
+			const firstScript = document.createElement('script');
+			firstScript.textContent = 'window.__multiFirst = 1;';
+			const secondScript = document.createElement('script');
+			secondScript.textContent = 'window.__multiSecond = (window.__multiFirst || 0) + 1;';
+			document.body.append(firstScript, secondScript);
+			setResult('#multi-append-checkbox', window.__multiFirst === 1 && window.__multiSecond === 2);
+		</script>
+	</body>
+</html>

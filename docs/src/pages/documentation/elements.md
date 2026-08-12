@@ -22,6 +22,32 @@ This initialization should occur as early as possible during the bootstrap of a 
 
 Please notice that different frameworks may require additional utilities to work with `custom elements`. For example `Angular` needs `CUSTOM_ELEMENTS_SCHEMA` to be provided.
 
+### Host isolation mode
+
+By default (`hostIsolation: 'legacy'`), the library monkey-patches a few of the host page's DOM prototypes and its History API to virtualize DOM and navigation operations for fragments.
+
+The opt-in strict mode confines all interception to the fragment boundary instead — no main-context global or prototype is ever modified, so the host application, analytics, and third-party scripts all run on pristine prototypes:
+
+```javascript
+import { initializeWebFragments } from 'web-fragments';
+
+initializeWebFragments({
+	hostIsolation: 'strict',
+	// optional: lets bound fragments react to navigations performed by the host app's router.
+	// Where the Navigation API is available, host navigations are also detected automatically,
+	// and back/forward navigations are always detected natively.
+	onHostNavigation: (notify) => myRouter.afterEach(() => notify()),
+});
+```
+
+In strict mode:
+
+- nodes inside a fragment's DOM are virtualized via per-fragment prototypes, so DOM interception is scoped to fragments and host-page DOM operations run at native speed;
+- scripts created by fragment code are inert from birth and can only ever execute in the fragment's JavaScript context;
+- host navigations are observed via the `onHostNavigation` adapter and/or the Navigation API instead of History API patches.
+
+Strict mode is expected to become the default in a future release.
+
 ## The `<web-fragment>` element
 
 `<web-fragment>` is a custom element responsible for marking the location in the existing application where a Web Fragment should be nested.
