@@ -50,3 +50,10 @@ greppable
 microtask
 sandboxing
 uncurried
+deleters
+expando
+expandos
+retargeted
+stringifiers
+Unforgeable
+webref

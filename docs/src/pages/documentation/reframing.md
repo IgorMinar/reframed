@@ -1,7 +1,7 @@
 ---
 title: 'Reframing'
 layout: '~/layouts/MarkdownLayout.astro'
-updateDate: 2025-10-26
+updateDate: 2026-08-11
 ---
 
 Reframing is a JavaScript and DOM virtualization technique unique to Web Fragments that provides isolation and encapsulation of an application running as a fragment, and prevents JavaScript collisions among fragments, and between the host application and fragments.
@@ -25,3 +25,7 @@ The goal of the monkey-patches is to preserve all of DOM and JavaScript APIs as 
 
 In this way, all the iframe's DOM operations are "reframed" and safely executed in the main DOM document without causing collisions.
 This is why the internal library as well as the technique are called "reframed" and "reframing" respectively.
+
+The iframe's `document` APIs are virtualized by a proxy facade spliced into the document's prototype chain.
+Every `Document` API defined by the browser specifications (per their WebIDL definitions) is classified as either virtualized (reimplemented to operate on the fragment's DOM in the main document), or native (audited to confirm that the iframe's native behavior is correct for fragments).
+If a fragment uses a `Document` API that hasn't been audited yet, the facade lets the call fall through to the iframe's native implementation and logs a one-time diagnostic to the console during development, so that any gaps in the virtualization layer surface as actionable warnings rather than silent misbehavior.
