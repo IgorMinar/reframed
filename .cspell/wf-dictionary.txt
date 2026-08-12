@@ -43,3 +43,10 @@ rnguyen
 subrequest
 subresource
 unregister
+currententrychange
+deopt
+deopts
+greppable
+microtask
+sandboxing
+uncurried
