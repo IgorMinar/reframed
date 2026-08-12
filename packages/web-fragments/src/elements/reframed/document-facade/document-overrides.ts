@@ -2,6 +2,16 @@ import { rewriteQuerySelector } from '../utils/selector-helpers';
 import { FacadeOverrides } from './document-facade';
 
 /**
+ * Hooks provided by the fragment boundary in strict host-isolation mode (see
+ * boundary/fragment-boundary.ts). When present, nodes created via the facade are stamped with the
+ * fragment's boundary prototype, and scripts are neutralized at creation ("born inert").
+ */
+export interface DocumentBoundaryHooks {
+	stampNode(node: Node): void;
+	makeScriptBornInert(script: HTMLScriptElement): void;
+}
+
+/**
  * Everything the document overrides need from the surrounding reframed context.
  *
  * All dependencies are injected so that this module stays free of imports with side effects and can be exercised by
@@ -22,6 +32,8 @@ export interface DocumentOverridesContext {
 	getIframeDocumentReadyState: () => DocumentReadyState;
 	/** Returns the inert clone (in the main DOM) of the script currently executing in the fragment's JS context. */
 	getCurrentScript: () => HTMLScriptElement | undefined;
+	/** Present in strict host-isolation mode only. */
+	boundary?: DocumentBoundaryHooks;
 }
 
 /**
@@ -34,6 +46,21 @@ export interface DocumentOverridesContext {
  */
 export function createDocumentOverrides(ctx: DocumentOverridesContext): FacadeOverrides {
 	const { iframeDocument, mainDocument, wfDocumentElement, reframedShadowRoot, boundNavigation } = ctx;
+
+	/**
+	 * In strict host-isolation mode, elements created via the facade enter the fragment boundary at
+	 * birth: scripts are neutralized before fragment code can arm them, and every created element is
+	 * stamped so that operations on it are intercepted at the boundary rather than via global patches.
+	 */
+	function admitCreatedElement<T extends Element>(element: T): T {
+		if (ctx.boundary) {
+			if (element instanceof HTMLScriptElement) {
+				ctx.boundary.makeScriptBornInert(element);
+			}
+			ctx.boundary.stampNode(element);
+		}
+		return element;
+	}
 
 	return {
 		title: {
@@ -241,20 +268,22 @@ export function createDocumentOverrides(ctx: DocumentOverridesContext): FacadeOv
 
 		createElement: {
 			value: function createElement(...[tagName, ...rest]: Parameters<Document['createElement']>) {
-				return Document.prototype.createElement.apply(
+				const element = Document.prototype.createElement.apply(
 					// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
 					tagName.includes('-') ? iframeDocument : mainDocument,
 					[tagName, ...rest],
 				);
+				return admitCreatedElement(element);
 			},
 		},
 		createElementNS: {
 			value: function createElementNS(...[namespaceURI, tagName, ...rest]: Parameters<Document['createElementNS']>) {
-				return Document.prototype.createElementNS.apply(
+				const element = Document.prototype.createElementNS.apply(
 					// create the element within iframeDocument if it contains a dash as it could be a custom element defined only in the iframe context
 					namespaceURI === 'http://www.w3.org/1999/xhtml' && tagName.includes('-') ? iframeDocument : mainDocument,
 					[namespaceURI, tagName, ...rest] as Parameters<Document['createElementNS']>,
 				);
+				return admitCreatedElement(element);
 			},
 		},
 	} satisfies Partial<Record<keyof Document, unknown>> as FacadeOverrides;

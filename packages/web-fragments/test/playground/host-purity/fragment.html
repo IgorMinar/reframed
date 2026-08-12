@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>host-purity fragment</title>
+	</head>
+	<body>
+		<h2>host-purity fragment</h2>
+		<div class="assertion-container">
+			<p>runtime script executed in fragment context</p>
+			<input id="fragment-script-ran-checkbox" type="checkbox" />
+		</div>
+		<script>
+			// exercise the fragment-side interception machinery so the host-purity assertions run against
+			// a page where fragment DOM operations actually happened
+			const marker = document.createElement('script');
+			marker.textContent = `
+				document.querySelector('#fragment-script-ran-checkbox').checked = true;
+			`;
+			document.body.appendChild(marker);
+		</script>
+	</body>
+</html>

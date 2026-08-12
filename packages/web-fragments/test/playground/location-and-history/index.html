@@ -34,9 +34,14 @@
 
 			document.querySelector('button#softNavToFoo').addEventListener('click', () => {
 				history.pushState({}, '', '/foo');
+				// in strict host-isolation mode the host app notifies fragments about its own soft
+				// navigations (in browsers with the Navigation API this is detected automatically and
+				// the extra notification is deduplicated)
+				window.notifyWebFragmentsNavigation?.();
 			});
 			document.querySelector('button#softNavToBar').addEventListener('click', () => {
 				history.pushState({}, '', '/bar');
+				window.notifyWebFragmentsNavigation?.();
 			});
 			document.querySelector('button#hardNavToBaz').addEventListener('click', () => {
 				location.href = '/baz';
@@ -54,7 +59,15 @@
 
 		<script type="module">
 			import { initializeWebFragments } from 'web-fragments';
-			initializeWebFragments();
+			initializeWebFragments({
+				hostIsolation: import.meta.env.VITE_WF_HOST_ISOLATION || undefined,
+				// the host app exposes the notify callback so its navigation code can report soft
+				// navigations to bound fragments (needed in strict mode in browsers without the
+				// Navigation API; see the soft nav button handlers above)
+				onHostNavigation: (notify) => {
+					window.notifyWebFragmentsNavigation = notify;
+				},
+			});
 		</script>
 	</body>
 </html>

@@ -7,9 +7,12 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const VSCODE_MODE = !!process.env.VSCODE_CWD;
 const PIERCING = process.env.PIERCING || true;
+// Host isolation mode: 'legacy' (global main-realm patches) or 'strict' (fragment-boundary interception only).
+// See rfcs/host-page-isolation.md
+const HOST_ISOLATION = process.env.HOST_ISOLATION || 'legacy';
 const WEBSERVER_COMMAND = VSCODE_MODE
-	? `PIERCING=${PIERCING} pnpm dev --port 4998`
-	: `PIERCING=${PIERCING} pnpm preview --port 4999`;
+	? `PIERCING=${PIERCING} VITE_WF_HOST_ISOLATION=${HOST_ISOLATION} pnpm dev --port 4998`
+	: `PIERCING=${PIERCING} VITE_WF_HOST_ISOLATION=${HOST_ISOLATION} pnpm preview --port 4999`;
 const WEBSERVER_URL = VSCODE_MODE ? 'http://localhost:4998' : 'http://localhost:4999';
 
 export default defineConfig({
@@ -18,7 +21,7 @@ export default defineConfig({
 	testMatch: '**/spec.ts',
 	testIgnore: 'dist/**',
 
-	outputDir: `node_modules/.wf-playground-tests/test-results-piercing-${PIERCING}`,
+	outputDir: `node_modules/.wf-playground-tests/test-results-piercing-${PIERCING}-isolation-${HOST_ISOLATION}`,
 
 	// Run all tests in parallel.
 	fullyParallel: true,
@@ -33,7 +36,15 @@ export default defineConfig({
 	workers: process.env.CI ? 1 : undefined,
 
 	// Reporter to use
-	reporter: [['html', { outputFolder: `node_modules/.wf-playground-tests/playwright-report-piercing-${PIERCING}` }]],
+	reporter: [
+		[
+			'html',
+			{
+				outputFolder: `node_modules/.wf-playground-tests/playwright-report-piercing-${PIERCING}-isolation-${HOST_ISOLATION}`,
+				open: 'never',
+			},
+		],
+	],
 
 	use: {
 		// Base URL to use in actions like `await page.goto('/')`.

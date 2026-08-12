@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+	<head></head>
+	<body>
+		<h1>WF Playground: host-purity</h1>
+
+		<p>host isolation mode: <span id="isolation-mode"></span></p>
+
+		<div id="host-canary"></div>
+
+		<web-fragment fragment-id="host-purity"></web-fragment>
+
+		<script type="module">
+			import { initializeWebFragments } from 'web-fragments';
+			const hostIsolation = import.meta.env.VITE_WF_HOST_ISOLATION || 'legacy';
+			document.getElementById('isolation-mode').textContent = hostIsolation;
+			initializeWebFragments({ hostIsolation });
+		</script>
+	</body>
+</html>

@@ -1,4 +1,5 @@
 import WritableDOMStream from 'writable-dom';
+import { getWebFragmentsConfig } from '../config';
 import { initializeIFrameContext } from './iframe-patches';
 import { initializeMainContext } from './main-patches';
 import { executeScriptsInPiercedFragment } from './script-execution';
@@ -31,7 +32,11 @@ export function reframed(
 	iframe: HTMLIFrameElement;
 	ready: Promise<void>;
 } {
-	initializeMainContext(options.bound);
+	if (getWebFragmentsConfig().hostIsolation === 'legacy') {
+		// legacy mode: patch the main context's prototypes and History API
+		// (strict mode confines all interception to the fragment boundary, see initializeIFrameContext)
+		initializeMainContext(options.bound);
+	}
 
 	const wfDocumentElement = options.wfDocumentElement;
 

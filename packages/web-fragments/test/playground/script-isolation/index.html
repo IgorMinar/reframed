@@ -18,7 +18,7 @@
 		<web-fragment fragment-id="script-isolation2"></web-fragment>
 		<script type="module">
 			import { initializeWebFragments } from 'web-fragments';
-			initializeWebFragments();
+			initializeWebFragments({ hostIsolation: import.meta.env.VITE_WF_HOST_ISOLATION || undefined });
 		</script>
 	</body>
 </html>

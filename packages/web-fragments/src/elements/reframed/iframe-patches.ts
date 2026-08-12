@@ -3,6 +3,10 @@ import { execToInertScriptMap } from './script-execution';
 import { assert } from './utils/assert';
 import { installDocumentFacade } from './document-facade/document-facade';
 import { createDocumentOverrides } from './document-facade/document-overrides';
+import { createFragmentBoundary, FragmentBoundary } from './boundary/fragment-boundary';
+import { makeScriptBornInert } from './boundary/born-inert-scripts';
+import { navigationBus, ensureHostNavigationSources } from './boundary/navigation-bus';
+import { getWebFragmentsConfig } from '../config';
 
 /**
  * Apply monkey-patches to the source iframe so that we trick code running in it to behave as if it
@@ -39,6 +43,23 @@ export function initializeIFrameContext(
 	// TODO: using the "pagehide" event would be preferred over the discouraged "unload" event,
 	// but we'd need to figure out how to restore the previously attached event if the page is resumed from the bfcache
 	iframeWindow.addEventListener('unload', () => fragmentAbortController.abort());
+
+	/**
+	 * In strict host-isolation mode all main-realm interception is confined to the fragment boundary:
+	 * nodes inside the fragment's DOM are stamped with per-fragment prototypes and a shadow-root-scoped
+	 * MutationObserver acts as the activation safety net. See boundary/fragment-boundary.ts and
+	 * rfcs/host-page-isolation.md. In legacy mode this stays undefined and the global patches installed
+	 * by initializeMainContext (see reframed.ts) provide the equivalent behavior.
+	 */
+	const strictIsolation = getWebFragmentsConfig().hostIsolation === 'strict';
+	const fragmentBoundary: FragmentBoundary | undefined = strictIsolation
+		? createFragmentBoundary({
+				iframeDocument,
+				shadowRoot: reframedShadowRoot,
+				wfDocumentElement,
+				abortSignal: fragmentAbortController.signal,
+			})
+		: undefined;
 
 	/** ---------------------------------------------- Window Patches ------------------------------------------------ */
 
@@ -137,13 +158,15 @@ export function initializeIFrameContext(
 			get(target, property, receiver) {
 				if (typeof Object.getOwnPropertyDescriptor(History.prototype, property)?.value === 'function') {
 					return function (this: unknown, ...args: unknown[]) {
-						const result = Reflect.apply(
-							History.prototype[property as keyof History],
-							this === receiver ? target : this,
-							args,
-						);
+						const applyNavigation = () =>
+							Reflect.apply(History.prototype[property as keyof History], this === receiver ? target : this, args);
+
+						// in strict mode, suppress the automatic host navigation sources while we apply the
+						// mutation, so this fragment-initiated navigation isn't re-reported as a host navigation
+						const result = strictIsolation ? navigationBus.withFragmentNavigation(applyNavigation) : applyNavigation();
 
 						// dispatch a popstate event on the main window to inform listeners of a location change
+						// (both the host application and the other fragments observe navigations this way)
 						mainWindow.dispatchEvent(new SyntheticPopStateEvent('popstate'));
 						return result;
 					};
@@ -228,12 +251,22 @@ export function initializeIFrameContext(
 			iframeWindow.dispatchEvent(new PopStateEvent('popstate', e instanceof PopStateEvent ? e : undefined));
 		};
 
-		// reframed:navigate event is triggered by the patched main window.history methods
-		window.addEventListener('reframed:navigate', handleNavigate, {
-			signal: fragmentAbortController.signal,
-		});
+		if (strictIsolation) {
+			// host-initiated pushState/replaceState calls are detected without patching the host's
+			// History API: via the onHostNavigation adapter and/or the Navigation API
+			const unsubscribe = navigationBus.subscribe(() => handleNavigate(new Event('wf:host-navigation')));
+			fragmentAbortController.signal.addEventListener('abort', unsubscribe);
+			ensureHostNavigationSources();
+		} else {
+			// reframed:navigate event is triggered by the patched main window.history methods
+			window.addEventListener('reframed:navigate', handleNavigate, {
+				signal: fragmentAbortController.signal,
+			});
+		}
 
-		// Forward the popstate event triggered on the main window to every registered iframe window
+		// Forward the popstate event triggered on the main window to every registered iframe window.
+		// This covers native back/forward navigations as well as the synthetic popstate events
+		// dispatched by any fragment's history proxy.
 		window.addEventListener('popstate', handleNavigate, {
 			signal: fragmentAbortController.signal,
 		});
@@ -269,6 +302,12 @@ export function initializeIFrameContext(
 			getIframeDocumentReadyState: () => reframedShadowRoot[reframedMetadataSymbol].iframeDocumentReadyState,
 			// grab the currently executing script in the iframe, and map it to its clone in the main document
 			getCurrentScript: () => execToInertScriptMap.get(getUnpatchedIframeDocumentCurrentScript()),
+			boundary: fragmentBoundary
+				? {
+						stampNode: fragmentBoundary.stampNode,
+						makeScriptBornInert,
+					}
+				: undefined,
 		}),
 	);
 	// END> DOCUMENT PATCHES
